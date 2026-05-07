@@ -20,22 +20,6 @@ module Interleaver_shell(
    input logic ap_rst_n
 );
 
-/////////////////////////////////////////////////  CONFIG  AND KE CALC /////////////////////////////////////////////////
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ////////////////////////////////// CONFIG ///////////////////////////
 
     logic config_valid;
@@ -57,37 +41,34 @@ module Interleaver_shell(
     logic KEC_tvalid;
 
 
-KEC_0 KEC (
-  .ap_clk(ap_clk),                              // input wire ap_clk
-  .ap_rst_n(ap_rst_n),                          // input wire ap_rst_n
-  .config_stream_TDATA(cnData_tdata),    // input wire [127 : 0] config_stream_TDATA
-  .config_stream_TREADY(cnDataIP_tready),  // output wire config_stream_TREADY
-  .config_stream_TVALID(cnDataIP_tvalid),  // input wire config_stream_TVALID
-  .out_stream_TDATA(KEC_tdata),          // output wire [31 : 0] out_stream_TDATA
-  .out_stream_TREADY(1'b1),        // input wire out_stream_TREADY
-  .out_stream_TVALID(KEC_tvalid)        // output wire out_stream_TVALID
-);
+    KEC_0 KEC (
+    .ap_clk(ap_clk),                              // input wire ap_clk
+    .ap_rst_n(ap_rst_n),                          // input wire ap_rst_n
+    .config_stream_TDATA(cnData_tdata),    // input wire [127 : 0] config_stream_TDATA
+    .config_stream_TREADY(cnDataIP_tready),  // output wire config_stream_TREADY
+    .config_stream_TVALID(cnDataIP_tvalid),  // input wire config_stream_TVALID
+    .out_stream_TDATA(KEC_tdata),          // output wire [31 : 0] out_stream_TDATA
+    .out_stream_TREADY(1'b1),        // input wire out_stream_TREADY
+    .out_stream_TVALID(KEC_tvalid)        // output wire out_stream_TVALID
+    );
 
 
     logic [15:0] Ko;
     logic [15:0] E;
     logic KE_valid;
     logic CodeBlock_reset;
-    logic [4:0] CodeBlock_counter;
-    logic [4:0] Cr;
-    logic [4:0] sc1;
+    logic [5:0] CodeBlock_counter;
+    logic [5:0] Cr;
+    logic [5:0] C;
+    logic [5:0] sc1;
 
     always_ff@(posedge ap_clk)begin
         if(!ap_rst_n | CodeBlock_reset) KE_valid <= 0;
-        else if(KEC_tvalid) KE_valid <= 1;
-
-        if(KEC_tvalid)begin
+        else if(KEC_tvalid) begin
+            KE_valid <= 1;
             Ko <= KEC_tdata[31:16];
-        end   
-
-        if(KE_valid)begin
             E <= KEC_tdata[15:0];
-        end  
+        end
         else if(CodeBlock_reset && CodeBlock_counter ==(Cr-1) )begin
             E <= E + sc1;
         end  
@@ -98,310 +79,100 @@ KEC_0 KEC (
     end
 
     
-
-
-
-
-
-
-
-
-
-    logic internal_reset;
-    logic reset;
-    logic e_valid;
-    
-   assign internal_reset = reset && ap_rst_n;
-
-   
 ////////////////////////////////// AXI CONTROL BLOCK FOR INPUT DATA //////////////////////////////////
 
-    logic signed [127:0] inData_tdata_reg;
-    logic inData_tvalid_reg;
-    logic inData_tlast_reg;
-    logic [6:0] inData_tkeep_reg;
 
-    always_ff @(posedge ap_clk) begin
-        if(!internal_reset) begin
-            inData_tvalid_reg <= 0;
-            inData_tlast_reg  <= 0;
-        end
-        else if(inData_tvalid && inData_tready) begin
-            inData_tvalid_reg <= 1;
-            inData_tlast_reg  <= inData_tlast;
-            inData_tdata_reg <= inData_tdata;
-            inData_tkeep_reg <= inData_tkeep;
-        end            
-         
-    end
-    
-    assign inData_tready = (ap_rst_n)  &&  ((!inData_tlast_reg) |  (!inData_tvalid_reg)) ;
      
 /////////////////////////////////// AXI CONTROL BLOCK FOR INPUT DATA ///////////////////////////////////  END
 
 
+    logic [127:0] pData_tdata;
+    logic pData_tvalid;
+    logic pData_tlast;
 
-    
-    
-////////////////////////////////// KE caluculator ///////////////////////////////////  END
+    logic run;
+    logic done;
 
-    logic [15:0] E,Ko;
-    logic ke_done;
-    logic [14:0] bits_per_row;
-    wire  [3:0] Q = cnData_tdata_reg[23:20];
-    logic [9:0] output_count;
-    logic [6:0] output_leftover;
-
-    logic config_stream_TREADY;
-
-    logic ke_valid;
-    logic [63:0] out_stream_TDATA;
-   KE_Calculator_0 ke_calc (
-    .ap_clk(ap_clk),                              // input wire ap_clk
-    .ap_rst_n(ap_rst_n),                          // input wire ap_rst_n
-    .config_stream_TDATA(cnData_tdata_reg),    // input wire [127 : 0] config_stream_TDATA
-    .config_stream_TREADY(config_stream_TREADY),  // output wire config_stream_TREADY
-    .config_stream_TVALID(cnData_tvalid_reg),  // input wire config_stream_TVALID
-    .out_stream_TDATA(out_stream_TDATA),          // output wire [61 : 0] out_stream_TDATA
-    .out_stream_TREADY(1'b1),        // input wire out_stream_TREADY
-    .out_stream_TVALID(ke_valid)        // output wire out_stream_TVALID
-);
-
-    logic E_valid;
-    
-    always_ff@(posedge ap_clk)begin
-        if(!ap_rst_n) begin
-            E_valid <=0;
-        end
-        else if(ke_valid) begin
-            E_valid <= 1;
-            E <= out_stream_TDATA[63:48];
-            Ko <= out_stream_TDATA[47:32];
-            bits_per_row <= out_stream_TDATA[31:17];
-            output_count <= out_stream_TDATA[16:7];
-            output_leftover <= out_stream_TDATA[6:0];
-        end
-    end
-
- 
-    
-////////////////////////////////// KE caluculator  END ///////////////////////////////////  END
+    Packer  packer(
+        .ap_clk(ap_clk),                              // input wire ap_clk
+        .ap_rst_n(ap_rst_n), 
 
 
-    logic packing_done;
-    logic [15:0] N;
+        .inData_tdata(inData_tdata),
+        .inData_tkeep(inData_tkeep),
+        .inData_tvalid(inData_tvalid),
+        .inData_tready(inData_tready),
+        .inData_tlast(inData_tlast),
 
-    logic [15:0] ram_di[0:3][0:1];
-    logic ram_write_enable;
-    logic [9:0]  ram_addresses_packer[0:3][0:1];
-    Packer packer(
-            .ap_clk(ap_clk),
-            .ap_rst_n(internal_reset),
+        .outData_tdata(pData_tdata),
+        .outData_tvalid(pData_tvalid),
+        .outData_tlast(pData_tlast),
 
-            .valid_in(inData_tvalid_reg),
-            .data_in(inData_tdata_reg),
-            .last_in(inData_tlast_reg),   
-            .tkeep(inData_tkeep_reg),
-
-            .ram_write_enable(ram_write_enable),
-            .ram_di(ram_di),
-            .ram_addresses(ram_addresses_packer),
-            .packing_done(packing_done),
-            .N(N)
+        .run(run),
+        .done(done),
+        .N(N)
     );
 
+    logic [9:0]  address_a[0:3];
+    logic [9:0]  address_b[0:3];
 
- ////////////////////////////////// Pointer calc START ///////////////////////////////////  
+    logic [15:0] Dout_a[0:3];
+    logic [15:0] Dout_b[0:3];
+
+    logic [15:0] Din_a[0:3];
+    logic [15:0] Din_b[0:3];
+
+    logic [9:0] write_address;
 
 
-    wire [66:0] in_data_pc = {E,Ko,N,bits_per_row,Q};
-    logic in_valid_pc_reg;
-
-    logic in_valid_pc;
-    logic in_ready_pc;
-    
-    logic [143:0] out_data_pc;
-    logic out_valid_pc;
-    wire out_ready_pc =1;
-
-    
     always_ff@(posedge ap_clk)begin
-        if (!internal_reset) in_valid_pc_reg <=0;
-        else if(in_valid_pc) in_valid_pc_reg <=1 ;
+        if(!ap_rst_n) write_address <= 0;
+        else if(pData_tvalid) write_address <= write_address +2;
     end
-    
+
     always_comb begin
-        if(packing_done && E_valid && !in_valid_pc_reg) in_valid_pc =1;
-        else in_valid_pc =0;
-
+        for(int i=0;i<4;i++)begin
+            address_a[i] = write_address;
+            address_b[i] = write_address+1;
+        end
     end
-    
-    
 
-
-Rdptr_Generator_0 pc1(
-  .ap_clk(ap_clk),                        // input wire ap_clk
-  .ap_rst_n(ap_rst_n),                    // input wire ap_rst_n
-  .in_stream_TDATA(in_data_pc),      // input wire [66 : 0] in_stream_TDATA
-  .in_stream_TREADY(in_ready_pc),    // output wire in_stream_TREADY
-  .in_stream_TVALID(in_valid_pc),    // input wire in_stream_TVALID
-  .out_stream_TDATA(out_data_pc),    // output wire [143 : 0] out_stream_TDATA
-  .out_stream_TREADY(out_ready_pc),  // input wire out_stream_TREADY
-  .out_stream_TVALID(out_valid_pc)  // output wire out_stream_TVALID
+    always_comb begin
+        for(int i=0;i<4;i++)begin
+            Din_a[i] = pData_tdata[127-16*i-:16];
+            Din_b[i] = pData_tdata[63-16*i-:16];
+        end
+    end
+    tdp_bram_4 bram0( 
+    .ap_clk(ap_clk),.en(1'b1),.we(outData_tvalid),
+    .addra(address_a),.dia(Din_a),.doa(Dout_a),
+    .addrb(address_b),.dib(Din_b),.dob(Dout_b)
 );
-    logic [11:0] Read_Ptrs[0:7];
-    logic [3:0] Read_Offsets[0:7];
-    logic [11:0] N_end;
-    logic [3:0] last_word_bit_count;
-    logic pointers_valid;
-    logic Interleaver_start_reg[0:1];
 
-    always@(posedge ap_clk) begin
 
-        for(int i=0;i<8;i++) begin
-            Read_Ptrs[i] <= out_data_pc[143-12*i-:12];
+////////////////////////////////////////  WRITE TO FILE ////////////////////////////////////////
+    integer fd;
+    initial begin
+        fd = $fopen("C:/Users/thrin/Documents/interleaver/ram_contents.txt", "w");
+        if (fd == 0) begin
+            $display("ERROR: Could not open file.");
         end
-        for(int i=0;i<8;i++) begin
-            Read_Offsets[i] <= out_data_pc[47-4*i-:4];
-        end
-        N_end <= out_data_pc[15:4];
-        last_word_bit_count <= out_data_pc[3:0];
 
-        if(!internal_reset)  Interleaver_start_reg[0] <=0;
-        else if(out_valid_pc) Interleaver_start_reg[0] <= 1;        
-
-        if(!internal_reset)   Interleaver_start_reg[1] <=0;
-        else Interleaver_start_reg[1] <=Interleaver_start_reg[0];
-
-    end
-
-    logic Interleaver_start;
-    always_comb begin
-        if(Interleaver_start_reg[1])  Interleaver_start = 0;
-        else Interleaver_start =  Interleaver_start_reg[0];
-    end
-
-
-  
-    
-
-
-////////////////////////////////// Pointer calc START ///////////////////////////////////  
-    logic [9:0]  ram_addresses[0:3][0:1][0:3];
-    logic [9:0]  ram_addresses_interleaver[0:3][0:1][0:3];
-
-    logic memory_select;
-    
-    always@(posedge ap_clk) begin
-        if(!internal_reset) memory_select<=0;
-        else if(packing_done) memory_select <=1;
-    
-    end
-    
-    always_comb begin
-    
-        if(memory_select) begin
-        
-            ram_addresses = ram_addresses_interleaver;
-            ram_enable = RE;
-            
-        end
         else begin
-            ram_enable =1;
-            for(int i=0;i<4;i++) begin
-                for (int j =0;j<4 ;j++ ) begin
-                    ram_addresses[i][0][j] = ram_addresses_packer[i][0];
-                     ram_addresses[i][1][j] = ram_addresses_packer[i][1];
-                end
-            end
-           end
+             $display("file opened succesfully");
+        end
+    end
+    final begin
+        $fclose(fd);
+    end
+    
+    always @(posedge ap_clk) begin
+        if (pData_tvalid) begin
+            $fwrite(fd, "%032h\n", pData_tdata);
+        end
     end
 
-
-
-    logic ram_enable;
-    logic [15:0] ram_do[0:3][0:1][0:3];
-
-tdp_bram_4 bram0( 
-    .ap_clk(ap_clk),.en(ram_enable),.we(ram_write_enable),
-    .addra(ram_addresses[0][0]),.dia(ram_di[0][0]),.doa(ram_do[0][0]),
-    .addrb(ram_addresses[0][1]),.dib(ram_di[0][1]),.dob(ram_do[0][1])
-);
-
-tdp_bram_4 bram1( 
-    .ap_clk(ap_clk),.en(ram_enable),.we(ram_write_enable),
-    .addra(ram_addresses[1][0]),.dia(ram_di[1][0]),.doa(ram_do[1][0]),
-    .addrb(ram_addresses[1][1]),.dib(ram_di[1][1]),.dob(ram_do[1][1])
-);
-
-tdp_bram_4 bram2( 
-    .ap_clk(ap_clk),.en(ram_enable),.we(ram_write_enable),
-    .addra(ram_addresses[2][0]),.dia(ram_di[2][0]),.doa(ram_do[2][0]),
-    .addrb(ram_addresses[2][1]),.dib(ram_di[2][1]),.dob(ram_do[2][1])
-);
-
-tdp_bram_4 bram3( 
-    .ap_clk(ap_clk),.en(ram_enable),.we(ram_write_enable),
-    .addra(ram_addresses[3][0]),.dia(ram_di[3][0]),.doa(ram_do[3][0]),
-    .addrb(ram_addresses[3][1]),.dib(ram_di[3][1]),.dob(ram_do[3][1])
-);
-
-
-    
-
-
-logic [15:0] Interleaver_Memory_Out[0:7];
-
-logic Interleaver_Memory_Out_valid;
-logic RE;
-logic Buffer_ready;
-
-
-
-Interleaver_Memory interleaver_memory(
-    .Q(Q),    
-    .Din(ram_do),
-    .ram_read_adresses(ram_addresses_interleaver),
-
-    .output_reg(Interleaver_Memory_Out),
-    .Interleaver_Memory_Out_valid(Interleaver_Memory_Out_valid),
-    .ap_clk(ap_clk),
-    .ap_rst_n(internal_reset),
-
-    .start(Interleaver_start),
-    .Buffer_ready(Buffer_ready),
-
-    .Read_Ptrs(Read_Ptrs),
-    .N_end(N_end),
-    .last_word_bit_count(last_word_bit_count),
-    .RE(RE),
-    .Offsets(Read_Offsets)
-
-);
-    
-Interleaver interleaver(
-    .Q(Q),
-    .Interleaver_Memory_Out(Interleaver_Memory_Out),
-    .Interleaver_Memory_Out_valid(Interleaver_Memory_Out_valid),
-
-    .Buffer_ready(Buffer_ready),
-    .outData_tdata(outData_tdata),
-    .outData_tvalid(outData_tvalid),
-    .outData_tlast(outData_tlast),
-    .outData_tready(outData_tready),
-    
-    .ap_clk(ap_clk),
-    .ap_rst_n(ap_rst_n),
-
-    .Buffer_start(Interleaver_start),
-    .reset(reset),
-    .output_count(output_count),
-    .output_leftover(output_leftover)
-    
-
-);
-
-
+////////////////////////////////////////  WRITE TO FILE  END////////////////////////////////////////
 
 
 endmodule
@@ -415,38 +186,36 @@ module tdp_bram_4(
     input               we,
     
     input       [9:0]   addra[0:3],
-    input       [15:0]  dia,
+    input       [15:0]  dia[0:3],
     output reg  [15:0]  doa[0:3],
 
 
     input       [9:0]   addrb[0:3],
-    input       [15:0]  dib,
+    input       [15:0]  dib[0:3],
     output reg  [15:0]  dob[0:3]
 );
 
     tdp_bram bram0(
-    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[0]),.dia(dia),.doa(doa[0]),
-    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[0]),.dib(dib),.dob(dob[0])
+    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[0]),.dia(dia[0]),.doa(doa[0]),
+    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[0]),.dib(dib[0]),.dob(dob[0])
     );
 
     tdp_bram bram1(
-    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[1]),.dia(dia),.doa(doa[1]),
-    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[1]),.dib(dib),.dob(dob[1])
+    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[1]),.dia(dia[1]),.doa(doa[1]),
+    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[1]),.dib(dib[1]),.dob(dob[1])
     );
 
     tdp_bram bram2(
-    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[2]),.dia(dia),.doa(doa[2]),
-    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[2]),.dib(dib),.dob(dob[2])
+    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[2]),.dia(dia[2]),.doa(doa[2]),
+    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[2]),.dib(dib[2]),.dob(dob[2])
     );
 
     tdp_bram bram3(
-    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[3]),.dia(dia),.doa(doa[3]),
-    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[3]),.dib(dib),.dob(dob[3])
+    .clka(ap_clk),.ena(en),.wea(we),.addra(addra[3]),.dia(dia[3]),.doa(doa[3]),
+    .clkb(ap_clk),.enb(en),.web(we),.addrb(addrb[3]),.dib(dib[3]),.dob(dob[3])
     );
 
      
-
-
 
 endmodule
 
@@ -486,38 +255,5 @@ module tdp_bram(
             else dob <= ram[addrb];   
         end
     end
-
-endmodule
-
-module KE_Caluculator(
-    input logic [127:0] cnData_tdata_reg,
-    input logic cnData_tdata_tvalid,
-    input logic ap_clk,
-    input logic ap_rst_n,
-    output logic [15:0] E,
-    output logic [15:0] Ko,
-    output logic ke_done,
-    output logic [14:0] bits_per_row,
-    
-    output logic [3:0] Q,
-
-    output logic[9:0] output_count,
-    output logic [6:0] output_leftover
- );
-
-assign ke_done =1;
-assign bits_per_row  = E/Q;
-
-assign output_count = (E+95)/96;
-assign output_leftover = (E+95)%96;
-
-
-
-
-  assign Ko =0;
-  assign E = 10800;
-   assign Q = 6;
-
-
 
 endmodule
