@@ -1,14 +1,14 @@
 module Interleaver_Memory(
     input logic [3:0] Q,    
 
-    input logic [15:0] Din[0:3],
-    output logic [9:0] RAM_Address[0:3][0:3],
+    input logic [15:0] Din[0:1][0:3],
+    output logic [9:0] Address[0:1][0:3],
+
 
     
 
-    input logic [14:0] storage_in,
-    input logic [3:0] storage_in_keep,
-    input logic [11:0] starting_address,
+    input logic [9:0] pointers,
+    input logic pointers_valid,
 
     input logic storage_valid,
     input logic storage_last,
@@ -16,17 +16,151 @@ module Interleaver_Memory(
     input logic ap_clk,
     input logic ap_rst_n,
 
-    input logic [11:0] Read_Ptrs,
-    input logic [3:0] Offsets,
 
-
-    output logic [63:0] ImOut_tdata[0:7],
-    output logic ImOut_tvalid,
-    input  logic Imout_tready
-    
+    output logic outData_tdata,
+    output logic outData_tvalid,
+    input  logic outData_tready,
+    output logic outData_tlast,
 
 );
+    wire pointers_read =0;
+    logic [1:0] state;
+    logic [2:0] count;
 
+    always@(posedge ap_clk)begin
+        if(!ap_rst_n)begin
+            count <=0;
+        end
+        else if(pointers_valid)begin
+            count <= count+1;
+        end
+        if(state == pointers_read)begin
+            
+        end
+    end
+
+
+    logic [47:0] S1_DATA_IN;
+    logic [47:0] S1_DATA_OUT;
+    logic        S1_DATA_WE;
+    logic [1:0] S1_DATA_ADDRESS;
+
+    logic [47:0] S2_DATA_IN;
+    logic [47:0] S2_DATA_OUT;
+    logic        S2_DATA_WE;
+    logic [1:0] S2_DATA_ADDRESS;
+
+
+    logic [9:0] A1_DATA_IN;
+    logic [9:0] A1_DATA_OUT;
+    logic        A1_DATA_WE;
+    logic [1:0] A1_DATA_ADDRESS;
+
+    logic [9:0] A2_DATA_IN;
+    logic [9:0] A2_DATA_OUT;
+    logic        A2_DATA_WE;
+    logic [1:0] A2_DATA_ADDRESS;
+
+
+        
+    LUT_RAM S1 (
+        .clk(ap_clk),
+        .we(S1_DATA_WE),    // Write Enable
+        .addr(S1_DATA_ADDRESS),  // Address bus
+        .din(S1_DATA_IN),   // Data input
+        .dout(S1_DATA_OUT)   // Data output
+    );
+
+
+    LUT_RAM S2 (
+        .clk(ap_clk),
+        .we(S2_DATA_WE),    // Write Enable
+        .addr(S2_DATA_ADDRESS),  // Address bus
+        .din(S2_DATA_IN),   // Data input
+        .dout(S2_DATA_OUT)   // Data output
+    );
+
+
+    LUT_RAM #(.DATA_WIDTH(10)) A1(
+        .clk(ap_clk),
+        .we(A1_DATA_WE),    // Write Enable
+        .addr(A1_DATA_ADDRESS),  // Address bus
+        .din(A1_DATA_IN),   // Data input
+        .dout(A1_DATA_OUT)   // Data output
+    );
+    LUT_RAM #(.DATA_WIDTH(10)) A2(
+        .clk(ap_clk),
+        .we(A2_DATA_WE),    // Write Enable
+        .addr(A2_DATA_ADDRESS),  // Address bus
+        .din(A2_DATA_IN),   // Data input
+        .dout(A2_DATA_OUT)   // Data output
+    );
+
+    /////////////////////////////// EXTERNAL MEMORY HANDLING //////////////////////////
+
+    
+
+
+
+   ///////////////////////////////  CORE LOGIC //////////////////////////////////////
+
+    logic [47:0] DATA[0:1][0:7];
+    
+
+
+
+
+
+endmodule
+
+module LUT_RAM #(
+    parameter ADDR_WIDTH = 2,
+    parameter DATA_WIDTH = 48,
+    parameter DEPTH = 4
+)(
+    input                     clk,
+    input                     we,    // Write Enable
+    input  [ADDR_WIDTH-1:0]   addr,  // Address bus
+    input  [DATA_WIDTH-1:0]   din,   // Data input
+    output [DATA_WIDTH-1:0]   dout   // Data output
+);
+
+    // Declare the memory array
+    reg [DATA_WIDTH-1:0] ram [0:DEPTH-1];
+
+    // Synchronous Write Logic
+    always @(posedge clk) begin
+        if (we) begin
+            ram[addr] <= din;
+        end
+    end
+
+    // Asynchronous Read Logic (The "Distributed" part)
+    // This makes it combinational, forcing the tool to use LUT RAM
+    assign dout = ram[addr];
+
+endmodule
+
+
+/*
+
+
+logic [31:0] mem_reg[0:7];
+logic mem_update;
+logic mem_select;
+
+always_ff@(posedge ap_clk)begin
+
+    if(!ap_rst_n) begin
+        mem_update <=0;
+        mem_select <=0;
+    end
+    if(mem_update)begin
+        for(int i=0;i<8;i++)begin
+            mem_reg[i] <= {Din[i][2*mem_select],Din[i][2*mem_select+1]};
+        end
+    end
+end
 
 
 logic [1:0] state;
@@ -60,7 +194,7 @@ always_ff@(posedge ap_clk)begin
 end
 
 ///////////////////////////////////////////////// UNIT 0 /////////////////////////////////////////////////
-
+/*
 logic Address[0:3][0:1];
 
 
@@ -138,43 +272,36 @@ always_ff@(posedge ap_clk)begin
     end
     
 end
+*/
+//////////////////// OUTPUT //////////////////////////////////////////
 
+/*
 
-
-
-
-
-
-/////////////////////////////////////////////////ADDRESS HANDLING  END//////////////////////////////////////////////////
-logic [15:0] row0_buf;
-logic [15:0] row1_buf;
-
-
-always_ff@
-
-
-
-endmodule
-
-
-
-
-
-
-
-
-
-module c_s_4 (
-    input  logic [15:0] in [0:3],
-    input  logic [1:0]  cs,
-    output logic [0:63] out
-);
+    logic [15:0] out_wire[0:7];
+    logic [14:0] storage[0:7];
+    logic [3:0] storage_bit_count[0:7];
+    logic [15:0] data[0:7];
+    logic [2:0] Qm;
     always_comb begin
+        if(Qm==8)begin
+            for(int i=0;i<8;i++)begin
+                out_wire[i] ={storage[i],1'b0} | (data[i]>>storage_bit_count);
+            end
+        end    
+    
+    end
 
-        for (int i = 0; i < 4; i++) begin
-            out[i*16 +: 16] = in[(i + cs)%4];
+
+
+    logic output_valid;
+    logic output_update;
+
+    always_ff@(posedge ap_clk)begin
+        if(!ap_rst_n) output_valid <=0;
+        else if(output_update) begin
+            
         end
     end
-                             
-endmodule
 
+
+    */
