@@ -23,6 +23,9 @@ module Interleaver_Memory(
     output logic outData_tlast,
 
 );
+    logic [3:0] Qm;
+    always@(posedge ap_clk) Qm <= Q;
+
     wire pointers_read =0;
     logic [1:0] state;
     logic [2:0] count;
@@ -108,8 +111,174 @@ module Interleaver_Memory(
     
 
 
+    ////////////////////////////////// LUMP BITS AND ROWS UPDATE /////////////////////////////////////
+    logic [47:0] rows_backup[0:7];
+    logic [47:0] rows[0:7];
+    logic [1:0] update_interval = Qm[3:1]-1;
+    logic [1:0] update_counter;
+
+    always_ff@(posedge ap_clk)begin
+        update_counter <= (update_counter==update_interval)? 0:update_counter+1;
+        if(update_counter==update_interval)begin
+            for(int i= 0;i<8;i++)begin
+                rows[i] <= rows_backup[i];
+            end
+        end
+    end
+
+    logic [47:0] sets[0:1];
+    logic [1:0] sc;
+    always@(posedge ap_clk)begin
+        case (Qm)
+            2:begin
+                sets[0] <= rows[0];
+                sets[1] <= rows[4];
+            end 
+            4:begin
+                case(sc)
+                    0: begin
+                        for(int i=0;i<2;i++)begin
+                            sets[0][47-24*i-:24] <= rows[i][47-:24];
+                            sets[1][47-24*i-:24] <= rows[4+i][47-:24];
+                        end
+                    end
+                    default: begin
+                        for(int i=0;i<2;i++)begin
+                            sets[0][47-24*i-:24] <= rows[i][23-:24];
+                            sets[1][47-24*i-:24] <= rows[4+i][23-:24];
+                        end
+                    end
+                endcase
+            end
+            6:begin
+                case(sc)
+                    0: begin
+                        for(int i=0;i<3;i++)begin
+                            sets[0][47-16*i-:16] <= rows[i][47-:16];
+                            sets[1][47-16*i-:16] <= rows[4+i][47-:16];
+                        end
+                    end
+                    1: begin
+                        for(int i=0;i<3;i++)begin
+                            sets[0][47-16*i-:16] <= rows[i][31-:16];
+                            sets[1][47-16*i-:16] <= rows[4+i][31-:16];
+                        end
+                    end
+                    default: begin
+                        for(int i=0;i<3;i++)begin
+                            sets[0][47-16*i-:16] <= rows[i][15-:16];
+                            sets[1][47-16*i-:16] <= rows[4+i][15-:16];
+                        end
+                    end
+                endcase
+                
+            end
+            default: begin
+                case(sc)
+                    0: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][47-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][47-:12];
+                        end
+                    end
+                    1: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][35-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][35-:12];
+                        end
+                    end
+                    2: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][23-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][23-:12];
+                        end
+                    end
+                    default: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][11-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][11-:12];
+                        end
+                    end
+                endcase
+            end
+        endcase
+    end
 
 
+
+
+
+/////////////////////////////// LUMP BITS AND ROWS UPDATE  END ///////////////////////////////////
+
+
+//////////////////////////////////////  FINAL OUTPUT ///////////////////////////////
+
+
+logic [0:95] outdata_wire;
+
+logic [0:47] rows_Q2[0:1];
+logic [0:23] rows_Q4[0:3];
+logic [0:15] rows_Q6[0:5];
+logic [0:11] rows_Q8[0:7];
+
+
+always_comb begin
+    rows_Q2[0] =sets[0];
+    rows_Q2[1] =sets[1];
+
+    for(int i=0;i<2;i++)begin
+        rows_Q4[i] = sets[0][47-24*i-:24];
+        rows_Q4[2+i] = sets[1][47-24*i-:24];;
+    end
+
+    for(int i=0;i<3;i++)begin
+        rows_Q6[i] = sets[0][47-16*i-:16];
+        rows_Q6[3+i] = sets[1][47-16*i-:16];
+    end
+
+    for(int i=0;i<4;i++)begin
+        rows_Q8[i] = sets[0][47-12*i-:12];
+        rows_Q8[4+i] = sets[1][47-12*i-:12];
+    end
+end
+
+always_comb begin
+    case(Qm)
+        2:begin
+            for(int i=0;i<96;i++)begin
+                outdata_wire[i] = rows_Q2[i%2][i/2];
+            end
+        end
+        4:begin
+            for(int i=0;i<96;i++)begin
+                outdata_wire[i] = rows_Q4[i%2][i/4];
+            end
+        end
+        6:begin
+            for(int i=0;i<96;i++)begin
+                outdata_wire[i] = rows_Q6[i%6][i/6];
+            end
+        end
+        default:begin
+            for(int i=0;i<96;i++)begin
+                outdata_wire[i] = rows_Q8[i%8][i/8];
+            end
+        end
+
+    endcase
+end
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////// FINAL OUTPUT END ////////////////////////////////////
 
 endmodule
 
@@ -138,6 +307,12 @@ module LUT_RAM #(
     // Asynchronous Read Logic (The "Distributed" part)
     // This makes it combinational, forcing the tool to use LUT RAM
     assign dout = ram[addr];
+
+
+
+
+
+
 
 endmodule
 
