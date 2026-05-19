@@ -570,28 +570,35 @@ end
                 outData_tdata <= Skid_data;
                 outData_tvalid <= 1;
                 Skid_valid <= 0;
+                outData_tlast <= Skid_last;
             end
             else if(sets_valid_gated)begin
                 outData_tdata <= outdata_wire;
                 outData_tvalid <= 1;
+                outData_tlast <= outdata_tlast_wire;
             end
             else begin
                 outData_tvalid <= 0;
+                outData_tlast <= 0;
             end
 
             outData_tready <= 1;
         end
         else begin
             if(outData_tvalid)begin
-                if(Skid_valid==0) begin
+                if(Skid_valid==0 && sets_valid_gated) begin
                     Skid_data <= outdata_wire;
                     Skid_valid <= 1;
+                    Skid_last <= outdata_tlast_wire;
                     outData_tready <= 0;
                 end
             end
             else begin
-                outData_tdata <= outdata_wire;
-                outData_tvalid <= 1;
+                if(sets_valid_gated)begin
+                    outData_tdata <= outdata_wire;
+                    outData_tvalid <= 1;
+                    outData_tlast <= outdata_tlast_wire;
+                end
                 outData_tready <= 1;
             end
         end
@@ -635,7 +642,7 @@ end
 
     always_ff@(posedge ap_clk)begin
         if(!ap_rst_n) IM_done <= 0;
-        else if(outData_tvalid && outData_tlast && outData_tready) IM_done <= 1;
+        else if(outData_tvalid && outData_tlast && outData_tready_actual) IM_done <= 1;
         else IM_done <= 0; 
     end
 endmodule
