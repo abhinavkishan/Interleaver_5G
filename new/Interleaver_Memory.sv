@@ -18,6 +18,7 @@ module Interleaver_Memory(
     output logic outData_tvalid,
     input  logic outData_tready,
     output logic outData_tlast,
+    output logic [11:0] outData_tkeep,
 
     input logic ap_clk,
     input logic ap_rst_n,
@@ -27,7 +28,6 @@ module Interleaver_Memory(
 
 
     /////////////////////////////////////  CONFIG //////////////////////////////////////////////////
-
     logic [15:0] N,E;
     logic [3:0] Qm;
     always_ff@(posedge ap_clk)begin
@@ -36,10 +36,8 @@ module Interleaver_Memory(
             E <= ImConfig_tdata[19:4];
             Qm <= ImConfig_tdata[3:0];
         end
-        else if(transaction && sets_valid)begin
-            E <= E-96;
-        end
-
+        else if(sets_valid) E <= E-96;
+        
         if(!ap_rst_n | IM_done) ImConfig_tready <= 1;
         else if(ImConfig_tvalid) ImConfig_tready <= 0;    
     end
@@ -51,10 +49,6 @@ module Interleaver_Memory(
     logic load_pointers =1;
     logic set_switch=0;
 
-    always_ff@(posedge ap_clk)begin
-        if(!ap_rst_n | IM_done) load_pointers<= 1;
-        else if(ACF_LUT_address[1]==update_interval && set_switch && pointer_tvalid) load_pointers <= 0;    
-    end
 
 
 
@@ -72,6 +66,13 @@ module Interleaver_Memory(
     logic [17:0] ACF_LUT_out[0:1];
     logic        ACF_LUT_we[0:1];
     logic [1:0]  ACF_LUT_address[0:1];
+
+    logic design_stop;
+    always_ff@(posedge ap_clk)begin
+        if(!ap_rst_n) design_stop <=0;
+        else if(fifo_write_count >= 500) design_stop <= 1;
+        else design_stop <= 0;
+    end
     
     
 
@@ -80,11 +81,14 @@ module Interleaver_Memory(
     
     always_comb begin
         ///////////////  WRITE ENABLES ////////////////////
+        ACF_LUT_we[0] = 0;
+        ACF_LUT_we[1] = 0;
+        
         if(load_pointers) begin
             ACF_LUT_we[0] = !set_switch;
             ACF_LUT_we[1] = set_switch;
         end
-        else begin
+        else if(design_stop==0) begin
             if(global_stall && !stall[0]) ACF_LUT_we[0] =0;
             else ACF_LUT_we[0] =1;
 
@@ -98,7 +102,6 @@ module Interleaver_Memory(
             ACF_LUT_in[i][17:8] =EH_next_address[i];
             ACF_LUT_in[i][1:0] = load_pointers?CGI_frame+1:(end_detected[i]?0:IM_frame[i]+1);
             ACF_LUT_in[i][7:2] = load_pointers?CGI_valid_bit_count:storage_bit_count_updated[i];
-
         end
 
     end
@@ -118,26 +121,34 @@ module Interleaver_Memory(
         if(!ap_rst_n | IM_done)begin
             ACF_LUT_address[0] <= 0;
             ACF_LUT_address[1] <= 0;
+            load_pointers <= 1;
+            set_switch <= 0;
         end
         else if(load_pointers)begin
-            if(pointer_tvalid) begin
-                if(set_switch) ACF_LUT_address[1] <= ACF_LUT_address[1] +1;
-                else ACF_LUT_address[0] <= ACF_LUT_address[0] +1;
+            if(pointer_tvalid)begin
+                if(set_switch==0)begin
+                    if(ACF_LUT_address[0]==update_interval) begin
+                        ACF_LUT_address[0] <= 0;
+                        set_switch <= 1;
+                    end
+                    else ACF_LUT_address[0] <= ACF_LUT_address[0]+1;
+                end
+                else begin
+                    if(ACF_LUT_address[1]==update_interval) begin
+                        ACF_LUT_address[1] <= 0;
+                        load_pointers <= 0;
+                    end
+                    else ACF_LUT_address[1] <= ACF_LUT_address[1]+1;
+                end
             end
         end
         else begin
             for(int i=0;i<2;i++)begin
-                if(!global_stall && !stall[i])begin
+                if((!global_stall) && (!stall[i]) && (design_stop==0))begin
                     if(ACF_LUT_address[i]==update_interval) ACF_LUT_address[i] <=0;
                     else ACF_LUT_address[i] <= ACF_LUT_address[i]+1;
                 end
             end
-        end
-
-
-        if(!ap_rst_n | IM_done)set_switch <= 0;
-        else if(load_pointers)begin
-           if(ACF_LUT_address[0]==update_interval && pointer_tvalid) set_switch <=1; 
         end
     end
 
@@ -202,7 +213,7 @@ module Interleaver_Memory(
                     LSC_storage[i][0] <='x ;
                     RSC_storage[i][0] <= storage_bit_count_current[i];
                 end
-                else if(!global_stall) begin
+                else begin
                     data_select_storage[i][0] <= 0;
                     LSC_storage[i][0] <= 48-storage_bit_count_current[i];
                     RSC_storage[i][0] <= storage_bit_count_current[i]; 
@@ -212,23 +223,24 @@ module Interleaver_Memory(
 
 
         if(!ap_rst_n | IM_done)begin
-            STRG_LUT_we[0][0] <= 0;
-            STRG_LUT_we[1][0] <= 0;
-
-            OWen_storage[0][0] <= 0;
-            OWen_storage[1][0] <= 0;
-        end
-        else if(load_pointers)begin
-            for(int i=0;i<2;i++) begin
+            for(int i=0;i<2;i++)begin
+                STRG_LUT_we[i][0] <= 0;
                 OWen_storage[i][0] <= 0;
             end
-
-            STRG_LUT_we[1][0] <= set_switch;
-            STRG_LUT_we[0][0] <= !set_switch;
+        end
+        else if(load_pointers)begin
+            for(int i=0;i<2;i++)begin
+                OWen_storage[i][0] <= 0;
+                STRG_LUT_we[i][0] <= (set_switch==i);
+            end
         end
         else begin
             for(int i=0;i<2;i++)begin
-                if(stall[i])begin
+                if(design_stop)begin
+                    OWen_storage[i][0] <= 0;
+                    STRG_LUT_we[i][0] <= 0; 
+                end
+                else if(stall[i])begin
                     OWen_storage[i][0] <= 0;
                     STRG_LUT_we[i][0] <= 1; 
                 end
@@ -246,16 +258,10 @@ module Interleaver_Memory(
         
 
         if(IM_done | !ap_rst_n)begin
-            STRG_LUT_we[0][0] <= 0;
-            STRG_LUT_we[0][1] <= 0;
-            STRG_LUT_we[1][0] <= 0;
-            STRG_LUT_we[1][1] <= 0;
-
-
-            OWen_storage[0][0] <= 0;
-            OWen_storage[0][1] <= 0;
-            OWen_storage[1][0] <= 0;
-            OWen_storage[1][1] <= 0;
+            for(int i=0;i<2;i++)begin
+                STRG_LUT_we[i][1] <= 0;
+                OWen_storage[i][1] <= 0;
+            end
         end
         else begin
             for(int i=0;i<2;i++)begin
@@ -379,82 +385,81 @@ module Interleaver_Memory(
     logic [47:0] sets[0:1];
     logic sets_valid;
     always@(posedge ap_clk)begin
-        if(rows_valid && outData_tready)begin
-            case (Qm)
-                2:begin
-                    sets[0] <= rows[0];
-                    sets[1] <= rows[4];
-                end 
-                4:begin
-                    case(sc)
-                        0: begin
-                            for(int i=0;i<2;i++)begin
-                                sets[0][47-24*i-:24] <= rows[i][47-:24];
-                                sets[1][47-24*i-:24] <= rows[4+i][47-:24];
-                            end
+        case (Qm)
+            2:begin
+                sets[0] <= rows[0];
+                sets[1] <= rows[4];
+            end 
+            4:begin
+                case(sc)
+                    0: begin
+                        for(int i=0;i<2;i++)begin
+                            sets[0][47-24*i-:24] <= rows[i][47-:24];
+                            sets[1][47-24*i-:24] <= rows[4+i][47-:24];
                         end
-                        default: begin
-                            for(int i=0;i<2;i++)begin
-                                sets[0][47-24*i-:24] <= rows[i][23-:24];
-                                sets[1][47-24*i-:24] <= rows[4+i][23-:24];
-                            end
+                    end
+                    default: begin
+                        for(int i=0;i<2;i++)begin
+                            sets[0][47-24*i-:24] <= rows[i][23-:24];
+                            sets[1][47-24*i-:24] <= rows[4+i][23-:24];
                         end
-                    endcase
-                end
-                6:begin
-                    case(sc)
-                        0: begin
-                            for(int i=0;i<3;i++)begin
-                                sets[0][47-16*i-:16] <= rows[i][47-:16];
-                                sets[1][47-16*i-:16] <= rows[4+i][47-:16];
-                            end
+                    end
+                endcase
+            end
+            6:begin
+                case(sc)
+                    0: begin
+                        for(int i=0;i<3;i++)begin
+                            sets[0][47-16*i-:16] <= rows[i][47-:16];
+                            sets[1][47-16*i-:16] <= rows[4+i][47-:16];
                         end
-                        1: begin
-                            for(int i=0;i<3;i++)begin
-                                sets[0][47-16*i-:16] <= rows[i][31-:16];
-                                sets[1][47-16*i-:16] <= rows[4+i][31-:16];
-                            end
+                    end
+                    1: begin
+                        for(int i=0;i<3;i++)begin
+                            sets[0][47-16*i-:16] <= rows[i][31-:16];
+                            sets[1][47-16*i-:16] <= rows[4+i][31-:16];
                         end
-                        default: begin
-                            for(int i=0;i<3;i++)begin
-                                sets[0][47-16*i-:16] <= rows[i][15-:16];
-                                sets[1][47-16*i-:16] <= rows[4+i][15-:16];
-                            end
+                    end
+                    default: begin
+                        for(int i=0;i<3;i++)begin
+                            sets[0][47-16*i-:16] <= rows[i][15-:16];
+                            sets[1][47-16*i-:16] <= rows[4+i][15-:16];
                         end
-                    endcase
-                    
-                end
-                default: begin
-                    case(sc)
-                        0: begin
-                            for(int i=0;i<4;i++)begin
-                                sets[0][47-12*i-:12] <= rows[i][47-:12];
-                                sets[1][47-12*i-:12] <= rows[4+i][47-:12];
-                            end
+                    end
+                endcase
+                
+            end
+            default: begin
+                case(sc)
+                    0: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][47-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][47-:12];
                         end
-                        1: begin
-                            for(int i=0;i<4;i++)begin
-                                sets[0][47-12*i-:12] <= rows[i][35-:12];
-                                sets[1][47-12*i-:12] <= rows[4+i][35-:12];
-                            end
+                    end
+                    1: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][35-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][35-:12];
                         end
-                        2: begin
-                            for(int i=0;i<4;i++)begin
-                                sets[0][47-12*i-:12] <= rows[i][23-:12];
-                                sets[1][47-12*i-:12] <= rows[4+i][23-:12];
-                            end
+                    end
+                    2: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][23-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][23-:12];
                         end
-                        default: begin
-                            for(int i=0;i<4;i++)begin
-                                sets[0][47-12*i-:12] <= rows[i][11-:12];
-                                sets[1][47-12*i-:12] <= rows[4+i][11-:12];
-                            end
+                    end
+                    default: begin
+                        for(int i=0;i<4;i++)begin
+                            sets[0][47-12*i-:12] <= rows[i][11-:12];
+                            sets[1][47-12*i-:12] <= rows[4+i][11-:12];
                         end
-                    endcase
-                end
-            endcase
-        end
-        
+                    end
+                endcase
+            end
+        endcase
+    
+    
 
         if(!ap_rst_n | IM_done)begin
             sets_valid <= 0;
@@ -523,32 +528,37 @@ end
 
 /////////////////////////////////////// OUTPUT AXI ////////////////////////////////////
 
+
+    logic [95:0] FIFO_IN_tdata;
+    logic FIFO_IN_tvalid;
+    logic FIFO_IN_tlast;
+    logic [11:0] FIFO_IN_tkeep;
+
     logic output_done;
     wire sets_valid_gated = (output_done==0) && sets_valid;
 
-    wire transaction = (outData_tready && outData_tvalid) | (outData_tvalid==0);
     always_ff@(posedge ap_clk)begin
-        if(transaction && sets_valid_gated) begin
-                outData_tdata <= outdata_wire;
-        end
-
+        FIFO_IN_tdata <= outdata_wire;
+        FIFO_IN_tkeep <= 12'(output_bit_count);
+        
         if(!ap_rst_n | IM_done)begin
-            outData_tvalid <= 0;
+            FIFO_IN_tvalid <= 0;
             output_done <= 0;
-            outData_tlast <= 0;
+            FIFO_IN_tlast <= 0;
         end
-        else if(transaction) begin
-            if(sets_valid_gated) outData_tvalid <= 1;
-            else outData_tvalid <= 0;
-            
-            if(output_bit_count <96) output_done <= 1;
-
-            if(sets_valid_gated==0) outData_tlast <=0;
+        else if(sets_valid_gated) begin
+            FIFO_IN_tvalid <= 1;
+            if(output_bit_count>=96) FIFO_IN_tlast <= 0;
             else begin
-                if(output_bit_count>=96) outData_tlast <= 0;
-                else outData_tlast <= 1;
-            end
+              FIFO_IN_tlast <= 1;
+              output_done <= 1;
+             end
         end
+        else begin
+            FIFO_IN_tvalid <= 0;
+            FIFO_IN_tlast <= 0;
+        end
+
     end
 
 
@@ -589,9 +599,35 @@ end
 
     always_ff@(posedge ap_clk)begin
         if(!ap_rst_n) IM_done <= 0;
-        else if(outData_tvalid && outData_tlast && outData_tready) IM_done <= 1;
+        else if(FIFO_IN_tvalid && FIFO_IN_tlast) IM_done <= 1;
         else IM_done <= 0; 
     end
+
+
+
+    logic fifo_ready;
+    logic [31:0] fifo_wrc;
+    wire [9:0] fifo_write_count = fifo_wrc[9:0];
+
+
+    axis_data_fifo_0 FIFO (
+        .s_axis_aresetn(ap_rst_n),  // input wire s_axis_aresetn
+        .s_axis_aclk(ap_clk),        // input wire s_axis_aclk
+        .s_axis_tvalid(FIFO_IN_tvalid),    // input wire s_axis_tvalid
+        .s_axis_tready(fifo_ready),    // output wire s_axis_tready
+        .s_axis_tdata(FIFO_IN_tdata),      // input wire [95 : 0] s_axis_tdata
+        .s_axis_tkeep(FIFO_IN_tkeep),              // input wire [11 : 0] s_axis_tkeep
+        .s_axis_tlast(FIFO_IN_tlast),  
+
+        .m_axis_tvalid(outData_tvalid),    // output wire m_axis_tvalid
+        .m_axis_tready(outData_tready),    // input wire m_axis_tready
+        .m_axis_tdata(outData_tdata), 
+        .m_axis_tkeep(outData_tkeep),       // output wire [11 : 0] m_axis_tkeep
+        .m_axis_tlast(outData_tlast),       // output wire [95 : 0] m_axis_tdata
+        .axis_wr_data_count(fifo_wrc) 
+    );
+
+  
 endmodule
 
 module LUT_RAM #(
