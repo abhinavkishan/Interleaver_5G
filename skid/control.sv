@@ -42,9 +42,7 @@ module control(
     output logic [47:0] IM_data[0:1],
 
     input logic IM_done,
-    output logic PACKER_trigger,
-
-    input logic out_ready_control
+    output logic PACKER_trigger
 
 
 );
@@ -303,8 +301,8 @@ integer fd;
     logic [9:0] ADG_address_out[0:1][0:3];
     logic [15:0] ADG_DIN[0:1][0:3];
 
-    ADG ADG1(.outData_tready(out_ready_control),.ADG_address_in(IM_address[0]),.ADG_frame(IM_frame[0]),.ADG_address_out(ADG_address_out[0]),.IM_data(IM_data[0]),.ADG_DIN(ADG_DIN[0]),.ap_clk(ap_clk));
-    ADG ADG2(.outData_tready(out_ready_control),.ADG_address_in(IM_address[1]),.ADG_frame(IM_frame[1]),.ADG_address_out(ADG_address_out[1]),.IM_data(IM_data[1]),.ADG_DIN(ADG_DIN[1]),.ap_clk(ap_clk));
+    ADG ADG1(.ADG_address_in(IM_address[0]),.ADG_frame(IM_frame[0]),.ADG_address_out(ADG_address_out[0]),.IM_data(IM_data[0]),.ADG_DIN(ADG_DIN[0]),.ap_clk(ap_clk));
+    ADG ADG2(.ADG_address_in(IM_address[1]),.ADG_frame(IM_frame[1]),.ADG_address_out(ADG_address_out[1]),.IM_data(IM_data[1]),.ADG_DIN(ADG_DIN[1]),.ap_clk(ap_clk));
     
     logic [9:0] write_address;
     always_ff@(posedge ap_clk)begin
@@ -449,18 +447,8 @@ module ADG(
 
     input logic [15:0] ADG_DIN[0:3],
 
-    output logic [47:0] IM_data,
-
-    input logic outData_tready
+    output logic [47:0] IM_data
 );
-    logic [9:0] ADG_address_in_reg;
-
-
-    always_ff@(posedge ap_clk)begin
-        ADG_address_in_reg <= ADG_address_in;
-    end
-
-    wire [9:0] ADG_address_selected = outData_tready? ADG_address_in:ADG_address_in_reg;
 
     logic [1:0] frame_reg;
     always_ff@(posedge ap_clk) frame_reg <= ADG_frame;
@@ -468,41 +456,39 @@ module ADG(
     always_comb begin
         case (ADG_frame)
             0: begin
-                ADG_address_out[0] = ADG_address_selected;
-                ADG_address_out[1] = ADG_address_selected;
-                ADG_address_out[2] = ADG_address_selected;
+                ADG_address_out[0] = ADG_address_in;
+                ADG_address_out[1] = ADG_address_in;
+                ADG_address_out[2] = ADG_address_in;
                 ADG_address_out[3] = 'x;
             end
             1: begin
-                ADG_address_out[0] = ADG_address_selected+1;
-                ADG_address_out[1] = ADG_address_selected+1;
+                ADG_address_out[0] = ADG_address_in+1;
+                ADG_address_out[1] = ADG_address_in+1;
                 ADG_address_out[2] = 'x;
-                ADG_address_out[3] = ADG_address_selected;
+                ADG_address_out[3] = ADG_address_in;
             end
             2: begin
-                ADG_address_out[0] = ADG_address_selected+1;
+                ADG_address_out[0] = ADG_address_in+1;
                 ADG_address_out[1] = 'x;
-                ADG_address_out[2] = ADG_address_selected;
-                ADG_address_out[3] = ADG_address_selected;
+                ADG_address_out[2] = ADG_address_in;
+                ADG_address_out[3] = ADG_address_in;
             end
             3: begin
                 ADG_address_out[0] = 'x;
-                ADG_address_out[1] = ADG_address_selected;
-                ADG_address_out[2] = ADG_address_selected;
-                ADG_address_out[3] = ADG_address_selected;
+                ADG_address_out[1] = ADG_address_in;
+                ADG_address_out[2] = ADG_address_in;
+                ADG_address_out[3] = ADG_address_in;
             end
         endcase
     end
 
     always_ff@(posedge ap_clk)begin
-        if(outData_tready)begin
-            case (frame_reg)
-                0:IM_data <= {ADG_DIN[0],ADG_DIN[1],ADG_DIN[2]};
-                1:IM_data <= {ADG_DIN[3],ADG_DIN[0],ADG_DIN[1]};
-                2:IM_data <= {ADG_DIN[2],ADG_DIN[3],ADG_DIN[0]};
-                3:IM_data <= {ADG_DIN[1],ADG_DIN[2],ADG_DIN[3]};
-            endcase
-        end
+        case (frame_reg)
+            0:IM_data <= {ADG_DIN[0],ADG_DIN[1],ADG_DIN[2]};
+            1:IM_data <= {ADG_DIN[3],ADG_DIN[0],ADG_DIN[1]};
+            2:IM_data <= {ADG_DIN[2],ADG_DIN[3],ADG_DIN[0]};
+            3:IM_data <= {ADG_DIN[1],ADG_DIN[2],ADG_DIN[3]};
+        endcase
     end
 
 

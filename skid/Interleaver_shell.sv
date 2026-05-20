@@ -102,7 +102,7 @@ logic [47:0] IM_data[0:1];
 logic IM_done;
 
 
-logic out_ready_control;
+    
 
 
 
@@ -141,7 +141,6 @@ control  Control(
     .ImConfig_tdata(ImConfig_tdata),
     .ImConfig_tvalid(ImConfig_tvalid),
     .ImConfig_tready(ImConfig_tready),
-    .out_ready_control(out_ready_control),
 
     .Pointer_tdata(pointer_tdata),
     .Pointer_tvalid(pointer_tvalid),
@@ -175,11 +174,9 @@ Interleaver_Memory IM(
     .outData_tdata(outData_tdata),
     .outData_tlast(outData_tlast),
     .outData_tvalid(outData_tvalid),
-    .outData_tready_actual(outData_tready),
+    .outData_tready(outData_tready),
 
-
-
-    .out_ready_control(out_ready_control),
+    
 
     .ap_clk(ap_clk),                              // input wire ap_clk
     .ap_rst_n(ap_rst_n),
