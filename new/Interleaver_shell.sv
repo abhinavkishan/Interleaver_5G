@@ -58,23 +58,22 @@ Packer packer(
 
 
 
-logic [66:0] KEC_out_tdata;
+logic [71:0] KEC_out_tdata;
 logic KEC_out_tready;
 logic KEC_out_tvalid;
 
 
-
 KEC_0 KEC (
-  .ap_clk(ap_clk),                              // input wire ap_clk
-  .ap_rst_n(ap_rst_n),                          // input wire ap_rst_n
-
-  .config_stream_TDATA(cnData_tdata),    // input wire [127 : 0] config_stream_TDATA
-  .config_stream_TREADY(cnData_tready),  // output wire config_stream_TREADY
-  .config_stream_TVALID(cnData_tvalid),  // input wire config_stream_TVALID
-
-  .out_stream_TDATA(KEC_out_tdata),          // output wire [66 : 0] out_stream_TDATA
-  .out_stream_TREADY(KEC_out_tready),        // input wire out_stream_TREADY
-  .out_stream_TVALID(KEC_out_tvalid)        // output wire out_stream_TVALID
+  .ap_clk(ap_clk),                                      // input wire ap_clk
+  .ap_rst_n(ap_rst_n), 
+                                   // input wire ap_rst_n
+  .config_stream_V_V_TVALID(cnData_tvalid),  // input wire config_stream_V_V_TVALID
+  .config_stream_V_V_TREADY(cnData_tready),  // output wire config_stream_V_V_TREADY
+  .config_stream_V_V_TDATA(cnData_tdata), // input wire [127 : 0] config_stream_V_V_TDATA
+  
+  .out_stream_V_V_TVALID(KEC_out_tvalid),        // output wire out_stream_V_V_TVALID
+  .out_stream_V_V_TREADY(KEC_out_tready),        // input wire out_stream_V_V_TREADY
+  .out_stream_V_V_TDATA(KEC_out_tdata)          // output wire [71 : 0] out_stream_V_V_TDATA
 );
 
 wire [14:0] BPR = KEC_out_tdata[66:52];
